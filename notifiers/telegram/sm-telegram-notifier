@@ -1,0 +1,64 @@
+#!/usr/bin/env ruby
+
+ENV['TELEGRAM_BOT_POOL_SIZE'] ||= '2'
+
+require 'json'
+require 'telegram/bot'
+
+$chat_ids = [ENV['TELEGRAM_CHAT_ID'].to_i]
+
+def notify(bot, order, symbol, value, options = {})
+  case order
+  when :buy
+    $chat_ids.each do |chat_id|
+      bot.api.send_message chat_id: chat_id, text: "I just bought #{symbol} at $#{value}"
+    end
+  when :sell
+    $chat_ids.each do |chat_id|
+      bot.api.send_message chat_id: chat_id, text: "I just sold #{symbol} at $#{value} (diff with buy price: $#{options[:diff]})"
+    end
+  end
+end
+
+Telegram::Bot::Client.run(ENV['TELEGRAM_TOKEN']) do |bot|
+  t1 = Thread.new do
+    ARGF.each_line do |line|
+      puts line
+      data = JSON.parse line, :symbolize_names => true
+      if data[:type] == 'decision'
+        if data[:data][:order] == 'buy'
+          notify bot, :buy, data[:data][:stock][:symbol], data[:data][:stock][:value]
+        elsif data[:data][:order] == 'sell'
+          notify bot, :sell, data[:data][:stock][:symbol], data[:data][:stock][:value], diff: data[:data][:stock][:diff]
+        end
+      end
+    end
+    Process.exit 0
+  end
+  t2 = Thread.new do
+    bot.listen do |message|
+      case message.text
+      when '/start'
+        if $chat_ids.include? message.chat.id
+          bot.api.send_message chat_id: message.chat.id, text: "You were already subscribed ! Send /stop to unsubscribe"
+        else
+          if false
+            $chat_ids << message.chat.id
+            bot.api.send_message chat_id: message.chat.id, text: "You are now subscribed ! Send /stop to stop notifications"
+          else
+            bot.api.send_message chat_id: message.chat.id, text: "Sorry, you are not allowed. Yet!"
+          end
+        end
+      when '/stop'
+        if $chat_ids.include? message.chat.id
+          $chat_ids.delete message.chat.id
+          bot.api.send_message chat_id: message.chat.id, text: "Unsubscribed ! Send /start to get subscribed again"
+        else
+          bot.api.send_message chat_id: message.chat.id, text: "You were not subscribed ! Send /start to get subscribed"
+        end
+      end
+    end
+  end
+  t1.join
+  t2.join
+end

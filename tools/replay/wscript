@@ -1,0 +1,14 @@
+def options(opt):
+    opt.load('compiler_cxx qt5')
+
+def configure(conf):
+    conf.load('compiler_cxx qt5')
+
+def build(bld):
+    bld(
+        features = 'qt5 cxx cxxprogram',
+        uselib   = 'QT5CORE QT5NETWORK',
+        source   = 'main.cpp stdin.cpp',
+        target   = 'sm-replay',
+        cxxflags = ['-fPIC']
+    )
